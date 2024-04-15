@@ -42,7 +42,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--num_asset',default=32,type=int)
 parser.add_argument('--n_clusters',default=12,type=int)
 # parser.add_argument('--batch_size',default=512,type=int,help='mini-batch size')
-parser.add_argument('--batch_size',default=128,type=int,help='mini-batch size')
+parser.add_argument('--batch_size',default=64,type=int,help='mini-batch size')
 parser.add_argument('--input_length',default=10,type=int)
 parser.add_argument('--input_gap',default=21,type=int)
 parser.add_argument('--horizon',default=21,type=int)
@@ -123,8 +123,7 @@ def get_cluster_result(config):
     # closes = np.load("../close_price.npy")
     if config.dataset == 'us':
         print("us")
-#         closes = np.load("./Data/close_price.npy")
-        closes = np.load("./Data/close_price_new.npy")      # lhz
+        closes = np.load("./Data/close_price.npy")
         closes = log_price(closes)[1:] - log_price(closes)[:-1]
         
     if config.random_select == False:
@@ -134,8 +133,7 @@ def get_cluster_result(config):
     else:
         g_id = config.g_id
         print("running group:"+str(g_id))
-#         picks = np.load("./Data/"+config.dataset+"_picks.npy")
-        picks = np.load("./Data/"+config.dataset+"_picks_new.npy")   # lhz
+        picks = np.load("./Data/"+config.dataset+"_picks.npy")
         pick = picks[g_id]
         print(pick)
         returns = closes[:,pick]
@@ -159,8 +157,7 @@ def get_lstm_result(config):
     # closes = np.load("../close_price.npy")
     if config.dataset == 'us':
         print("us")
-#         closes = np.load("./Data/close_price.npy")
-        closes = np.load("./Data/close_price_new.npy")   # lhz
+        closes = np.load("./Data/close_price.npy")
         closes = log_price(closes)[1:] - log_price(closes)[:-1]
 
     if config.random_select == False:
@@ -170,8 +167,7 @@ def get_lstm_result(config):
     else:
         g_id = config.g_id
         print("running group:"+str(g_id))
-#         picks = np.load("./Data/"+config.dataset+"_picks.npy")
-        picks = np.load("./Data/"+config.dataset+"_picks_new.npy")   # lhz
+        picks = np.load("./Data/"+config.dataset+"_picks.npy")
         pick = picks[g_id]
         print(pick)
         returns = closes[:,pick]
@@ -197,8 +193,7 @@ def get_preprocess_result(config):
     """
     if config.dataset == 'us':
         print("us")
-#         closes = np.load("./Data/close_price.npy")
-        closes = np.load("./Data/close_price_new.npy")   # lhz
+        closes = np.load("./Data/close_price.npy")
         closes = log_price(closes)[1:] - log_price(closes)[:-1]
   
     # Change the way to sample assets
@@ -210,8 +205,7 @@ def get_preprocess_result(config):
     else:
         g_id = config.g_id
         print("running group:"+str(g_id))
-#         picks = np.load("./Data/"+config.dataset+"_picks.npy")
-        picks = np.load("./Data/"+config.dataset+"_picks_new.npy")   # lhz
+        picks = np.load("./Data/"+config.dataset+"_picks.npy")
         pick = picks[g_id]                     # 这里g_id为10个set中的一个
         print(pick)
         returns = closes[:,pick]
@@ -289,12 +283,6 @@ def train(config):
         print(config.num_experts)
         print(config.top_k)
         net = ED_QUAD_MOE(encoder, decoder, config.input_length, config.width_n_height, device, \
-                            config.num_experts, config.top_k, config.noisy_gating)
-    elif config.method == "moe_1_at": # Attention Quadratic MoE (Attention ADNN)                                # new lhz
-        print("AT_ED_QUAD_MOE")
-        print(config.num_experts)
-        print(config.top_k)
-        net = AT_ED_QUAD_MOE(encoder, decoder, config.input_length, config.width_n_height, device, \
                             config.num_experts, config.top_k, config.noisy_gating)
     elif config.method == "moe_2": # Cubic MoE
         net = ED_CUBIC_MOE(encoder, decoder, config.input_length, config.width_n_height, device, \
@@ -387,11 +375,11 @@ def train(config):
                 loss_aver = loss.item()
             else: # Other kinds of model
                 pred  = net(inputs)  # B,S,C,H,W
-                print('#########################################################')
-                print(f'inputs_shape:{inputs.shape}')
-                print(f'pred_shape:{pred.shape}')
-                print(f'label_shape:{label.shape}')
-                print('#########################################################')
+#                 print('#########################################################')
+#                 print(f'inputs_shape:{inputs.shape}')
+#                 print(f'pred_shape:{pred.shape}')
+#                 print(f'label_shape:{label.shape}')
+#                 print('#########################################################')
                 loss = lossfunction(pred, label) 
                 loss_aver = loss.item()
             train_losses.append(loss_aver)
@@ -501,17 +489,12 @@ def train(config):
                 loss = lossfunction(pred, label) 
                 loss_aver = loss.item()
             # record validation loss
-#             wandb.log({"MSE": loss_aver})           # lhz
             test_losses.append(loss_aver)
             
             prev_loss = uniform_evaluation(inputs[:,-1:], label, config)
             uni_loss = uniform_evaluation(pred, label,config) 
             test_uni_losses += uni_loss
             prev_uni_losses += prev_loss
-            
-#             Gain = 1 - (uni_loss/prev_loss)
-#             wandb.log({"Gain": Gain})
-            
             # Store the prediction and labels
             if config.save_model == True:
                 pred = pred.cpu().detach().numpy() #B, 10, 12, 12
@@ -551,8 +534,6 @@ def train(config):
     else:
         r_pred, r_gain = get_pred_risk(preds, result, config.num_asset, config.adm, config.method)
 
-    wandb.log({"preds": preds})
-    wandb.log({"labels": labels})
     wandb.log({"risk": r_pred})
     wandb.log({"risk gain":1-r_gain})
 
