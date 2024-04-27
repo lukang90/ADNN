@@ -13,6 +13,9 @@ d_T = ((1,10,[3,3,3],1,[1,1,1]) , (10,1,[3,3,3],1,[1,1,1]))
 
 
 
+
+
+
 class AttentionConvLSTM(nn.Module):
     def __init__(self, encoder, decoder, d_model, n_heads, input_length, image_width, channels, height, width):
         super(AttentionConvLSTM, self).__init__()
@@ -238,8 +241,10 @@ class ED_QUAD_MOE(nn.Module):
         self.decoder = decoder
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, input, train=True, visualization=False):
-
+    def forward(self, input, train=True, visualization=False):    # input.shape:torch.Size([512, 10, 1, 23, 23])
+#         print('*********************')
+#         print(f'input.shape:{input.shape}')
+#         print('*********************')
         # conv3d to condense input from (batchsize, Seq, C, W, H) to the shape of (batchsize,W,H)
         # input shape(B,S,C,H,W) but conv3d accept (B,C,S,H,W)
         x = torch.transpose(input, 1, 2)
@@ -276,8 +281,10 @@ class ED_QUAD_MOE(nn.Module):
         quad_func = quad_func.view(shape[0],1,shape[2],shape[3],shape[4])
         # new_input = input * MoE_output
 #        new_input = self.sigmoid(input*input*quad_func + input * transform_func + add_func)
-        output = (input*input*quad_func + input * transform_func + add_func)
-
+        output = (input*input*quad_func + input * transform_func + add_func)    # output.shape:torch.Size([512, 10, 1, 23, 23])
+#         print('*********************')
+#         print(f'output.shape:{output.shape}')
+#         print('*********************')
         output = self.encoder(output)
         output = self.decoder(output)
         output = self.sigmoid(output)
@@ -361,6 +368,103 @@ class ED_QUAD_MOE(nn.Module):
 
         
         
+# # at_ADNN
+# class AT_ED_QUAD_MOE(nn.Module):
+
+#     def __init__(self, encoder, decoder, input_length, image_width, device, num_experts=4, top_k=1, noisy_gating=True):
+#         super().__init__()
+#         self.device = device
+        
+#         kernel_2 = [input_length] + [3, 3]  # Assuming this is the intended structure
+#         self.conv3d_1 = nn.Conv3d(moe[0][0],moe[0][1],moe[0][2],stride = moe[0][3],padding=moe[0][4])
+#         self.conv3d_2 = nn.Conv3d(moe[1][0],moe[1][1],kernel_2,stride = moe[1][3],padding=moe[1][4])
+
+#         self.relu = nn.ReLU()
+#         self.moe_transform = MoE(self.device,image_width**2,image_width**2,num_experts=num_experts,\
+#                                  hidden_size = 2*(image_width**2),k=top_k,noisy_gating = noisy_gating)
+#         self.moe_add = MoE(self.device,image_width**2,image_width**2,num_experts=num_experts,\
+#                                  hidden_size = 2*(image_width**2),k=top_k,noisy_gating = noisy_gating)
+#         self.moe_quad = MoE(self.device,image_width**2,image_width**2,num_experts=num_experts,\
+#                                  hidden_size = 2*(image_width**2),k=top_k,noisy_gating = noisy_gating)
+
+#         # Adding attention layer
+# #         self.attention = nn.Conv3d(1, 1, kernel_size=(3, 3, 3), padding=1, stride=1)
+#         self.attention = nn.Conv3d(10, 10, kernel_size=(3, 3, 3), padding=1, stride=1)
+
+#         self.encoder = encoder
+#         self.decoder = decoder
+#         self.sigmoid = nn.Sigmoid()
+
+#     def forward(self, input, train=True, visualization=False):
+#         x = torch.transpose(input, 1, 2)
+#         x = self.conv3d_1(x)
+#         x = self.relu(x)
+#         x = self.conv3d_2(x)
+#         x = self.relu(x)
+
+#         # Reshape for MoE input
+#         x_shape = x.shape
+#         x = x.reshape(x_shape[0], -1)
+# #         print('*********************')
+# #         print(f'x.shape:{x.shape}')
+# #         print('*********************')
+#         transform_func, aux_loss = self.moe_transform(x, train=train)   # x.shape:torch.Size([128, 529])
+#         add_func, add_aux_loss = self.moe_add(x, train=train)
+#         quad_func, quad_aux_loss = self.moe_quad(x, train=train)
+
+#         # Reshape MoE outputs to match input dimensions for broadcasting
+#         shape = input.shape
+#         transform_func = transform_func.view(shape[0], 1, shape[2], shape[3], shape[4])
+#         add_func = add_func.view(shape[0], 1, shape[2], shape[3], shape[4])
+#         quad_func = quad_func.view(shape[0], 1, shape[2], shape[3], shape[4])
+
+#         output = input*input*quad_func + input*transform_func + add_func
+        
+#         # Apply attention
+# #         print('*********************')
+# #         print(f'output.shape:{output.shape}')
+# #         print('*********************')
+#         attention_weights = F.softmax(self.attention(output), dim=2)    # output.shape:torch.Size([128, 10, 1, 23, 23])
+#         output = output * attention_weights
+# #         print('*********************')
+# #         print(f'output.shape:{output.shape}')
+# #         print('*********************')
+
+#         # Ensure output has correct shape before feeding to the encoder
+#         output = self.encoder(output)
+#         output = self.decoder(output)
+#         output = self.sigmoid(output)
+
+#         return output, torch.sum(aux_loss + add_aux_loss + quad_aux_loss)  
+        
+
+# 定义自注意力层
+class ScaledDotProductAttention(nn.Module):
+    def __init__(self, channel_size):
+        super(ScaledDotProductAttention, self).__init__()
+        self.query_conv = nn.Conv3d(in_channels=channel_size, out_channels=channel_size, kernel_size=1)
+        self.key_conv = nn.Conv3d(in_channels=channel_size, out_channels=channel_size, kernel_size=1)
+        self.value_conv = nn.Conv3d(in_channels=channel_size, out_channels=channel_size, kernel_size=1)
+        self.sqrt_dk = torch.sqrt(torch.tensor(channel_size, dtype=torch.float32))
+
+    def forward(self, x):
+        batch_size, seq_len, channels, height, width = x.size()
+        # Generate queries, keys, values
+        query = self.query_conv(x).view(batch_size, seq_len, channels, -1)
+        key = self.key_conv(x).view(batch_size, seq_len, channels, -1)
+        value = self.value_conv(x).view(batch_size, seq_len, channels, -1)
+
+        # Calculate attention scores
+        scores = torch.matmul(query.transpose(2, 3), key) / self.sqrt_dk
+        attn = F.softmax(scores, dim=-1)
+
+        # Apply attention to the values
+        output = torch.matmul(attn, value.transpose(2, 3))
+        output = output.view(batch_size, seq_len, channels, height, width)
+
+        return output
+    
+        
 # at_ADNN
 class AT_ED_QUAD_MOE(nn.Module):
 
@@ -381,8 +485,7 @@ class AT_ED_QUAD_MOE(nn.Module):
                                  hidden_size = 2*(image_width**2),k=top_k,noisy_gating = noisy_gating)
 
         # Adding attention layer
-#         self.attention = nn.Conv3d(1, 1, kernel_size=(3, 3, 3), padding=1, stride=1)
-        self.attention = nn.Conv3d(10, 10, kernel_size=(3, 3, 3), padding=1, stride=1)
+        self.self_attention = ScaledDotProductAttention(channel_size=10)
 
         self.encoder = encoder
         self.decoder = decoder
@@ -411,14 +514,13 @@ class AT_ED_QUAD_MOE(nn.Module):
         add_func = add_func.view(shape[0], 1, shape[2], shape[3], shape[4])
         quad_func = quad_func.view(shape[0], 1, shape[2], shape[3], shape[4])
 
-        output = input*input*quad_func + input*transform_func + add_func
+        output = input*input*quad_func + input*transform_func + add_func   # output.shape:torch.Size([128, 10, 1, 23, 23])
         
         # Apply attention
 #         print('*********************')
 #         print(f'output.shape:{output.shape}')
 #         print('*********************')
-        attention_weights = F.softmax(self.attention(output), dim=2)    # output.shape:torch.Size([128, 10, 1, 23, 23])
-        output = output * attention_weights
+        output = self.self_attention(output)
 #         print('*********************')
 #         print(f'output.shape:{output.shape}')
 #         print('*********************')
@@ -428,11 +530,7 @@ class AT_ED_QUAD_MOE(nn.Module):
         output = self.decoder(output)
         output = self.sigmoid(output)
 
-        return output, torch.sum(aux_loss + add_aux_loss + quad_aux_loss)  
-        
-        
-        
-        
+        return output, torch.sum(aux_loss + add_aux_loss + quad_aux_loss)          
         
         
         
