@@ -41,7 +41,8 @@ def boolean_string(s):
 parser = argparse.ArgumentParser()
 parser.add_argument('--num_asset',default=32,type=int)
 parser.add_argument('--n_clusters',default=12,type=int)
-parser.add_argument('--batch_size',default=512,type=int,help='mini-batch size')
+# parser.add_argument('--batch_size',default=512,type=int,help='mini-batch size')
+parser.add_argument('--batch_size',default=128,type=int,help='mini-batch size')
 parser.add_argument('--input_length',default=10,type=int)
 parser.add_argument('--input_gap',default=21,type=int)
 parser.add_argument('--horizon',default=21,type=int)
@@ -61,7 +62,8 @@ parser.add_argument("--early_stop_patience", type=int, default=20)
 parser.add_argument("--lag_t", type = int, default=42)
 parser.add_argument("--filter_size", type=int, default=5)
 parser.add_argument("--dataset", type=str, default='us')
-parser.add_argument("--data_dir", type=str, default='/tmp2/syliu/adnn/nk_picks')
+# parser.add_argument("--data_dir", type=str, default='/tmp2/syliu/adnn/nk_picks')
+parser.add_argument("--data_dir", type=str, default='./data/us_picks')
 parser.add_argument("--gpu_id",type=str, default="0")
 parser.add_argument("--group_id", type=int, default= 0)
 args = parser.parse_args()
@@ -121,7 +123,8 @@ def get_cluster_result(config):
     # closes = np.load("../close_price.npy")
     if config.dataset == 'us':
         print("us")
-        closes = np.load("./Data/close_price.npy")
+#         closes = np.load("./Data/close_price.npy")
+        closes = np.load("./Data/close_price_new.npy")      # lhz
         closes = log_price(closes)[1:] - log_price(closes)[:-1]
         
     if config.random_select == False:
@@ -131,7 +134,8 @@ def get_cluster_result(config):
     else:
         g_id = config.g_id
         print("running group:"+str(g_id))
-        picks = np.load("./Data/"+config.dataset+"_picks.npy")
+#         picks = np.load("./Data/"+config.dataset+"_picks.npy")
+        picks = np.load("./Data/"+config.dataset+"_picks_new.npy")   # lhz
         pick = picks[g_id]
         print(pick)
         returns = closes[:,pick]
@@ -155,7 +159,8 @@ def get_lstm_result(config):
     # closes = np.load("../close_price.npy")
     if config.dataset == 'us':
         print("us")
-        closes = np.load("./Data/close_price.npy")
+#         closes = np.load("./Data/close_price.npy")
+        closes = np.load("./Data/close_price_new.npy")   # lhz
         closes = log_price(closes)[1:] - log_price(closes)[:-1]
 
     if config.random_select == False:
@@ -165,7 +170,8 @@ def get_lstm_result(config):
     else:
         g_id = config.g_id
         print("running group:"+str(g_id))
-        picks = np.load("./Data/"+config.dataset+"_picks.npy")
+#         picks = np.load("./Data/"+config.dataset+"_picks.npy")
+        picks = np.load("./Data/"+config.dataset+"_picks_new.npy")   # lhz
         pick = picks[g_id]
         print(pick)
         returns = closes[:,pick]
@@ -191,7 +197,8 @@ def get_preprocess_result(config):
     """
     if config.dataset == 'us':
         print("us")
-        closes = np.load("./Data/close_price.npy")
+#         closes = np.load("./Data/close_price.npy")
+        closes = np.load("./Data/close_price_new.npy")   # lhz
         closes = log_price(closes)[1:] - log_price(closes)[:-1]
   
     # Change the way to sample assets
@@ -203,13 +210,14 @@ def get_preprocess_result(config):
     else:
         g_id = config.g_id
         print("running group:"+str(g_id))
-        picks = np.load("./Data/"+config.dataset+"_picks.npy")
-        pick = picks[g_id]
+#         picks = np.load("./Data/"+config.dataset+"_picks.npy")
+        picks = np.load("./Data/"+config.dataset+"_picks_new.npy")   # lhz
+        pick = picks[g_id]                     # 这里g_id为10个set中的一个
         print(pick)
         returns = closes[:,pick]
 
     
-    # print(returns.shape)
+    print(f'returns.shape:{returns.shape}')      # lhz
     num_asset = config.num_asset
     lag_t = config.lag_t
     input_gap = config.input_gap
@@ -282,6 +290,12 @@ def train(config):
         print(config.top_k)
         net = ED_QUAD_MOE(encoder, decoder, config.input_length, config.width_n_height, device, \
                             config.num_experts, config.top_k, config.noisy_gating)
+    elif config.method == "moe_1_at": # Attention Quadratic MoE (Attention ADNN)                                # new lhz
+        print("AT_ED_QUAD_MOE")
+        print(config.num_experts)
+        print(config.top_k)
+        net = AT_ED_QUAD_MOE(encoder, decoder, config.input_length, config.width_n_height, device, \
+                            config.num_experts, config.top_k, config.noisy_gating)
     elif config.method == "moe_2": # Cubic MoE
         net = ED_CUBIC_MOE(encoder, decoder, config.input_length, config.width_n_height, device, \
                             config.num_experts, config.top_k, config.noisy_gating)
@@ -303,6 +317,9 @@ def train(config):
     elif config.method == "lstm": # LSTM
         print("lstm")
         net = lstm_encoder_decoder.lstm_seq2seq(input_size = 528, hidden_size = 1056, device = device)
+    elif config.method == "Attention-ConvLstm": # Transformer-ConvLstm                                 # new
+        print("Attention-ConvLstm")
+        net = AttentionConvLSTM(encoder, decoder, d_model=64, n_heads=4, input_length=config.input_length, image_width=config.width_n_height, channels=1, height=config.width_n_height, width=config.width_n_height)
     else: # Raw-ConvLSTM
         print("ConvLSTM")
         net = ED_RAW(encoder, decoder)
@@ -370,6 +387,11 @@ def train(config):
                 loss_aver = loss.item()
             else: # Other kinds of model
                 pred  = net(inputs)  # B,S,C,H,W
+                print('#########################################################')
+                print(f'inputs_shape:{inputs.shape}')
+                print(f'pred_shape:{pred.shape}')
+                print(f'label_shape:{label.shape}')
+                print('#########################################################')
                 loss = lossfunction(pred, label) 
                 loss_aver = loss.item()
             train_losses.append(loss_aver)
@@ -479,12 +501,17 @@ def train(config):
                 loss = lossfunction(pred, label) 
                 loss_aver = loss.item()
             # record validation loss
+#             wandb.log({"MSE": loss_aver})           # lhz
             test_losses.append(loss_aver)
             
             prev_loss = uniform_evaluation(inputs[:,-1:], label, config)
             uni_loss = uniform_evaluation(pred, label,config) 
             test_uni_losses += uni_loss
             prev_uni_losses += prev_loss
+            
+#             Gain = 1 - (uni_loss/prev_loss)
+#             wandb.log({"Gain": Gain})
+            
             # Store the prediction and labels
             if config.save_model == True:
                 pred = pred.cpu().detach().numpy() #B, 10, 12, 12
@@ -504,6 +531,7 @@ def train(config):
     torch.cuda.empty_cache()
     
     # Save metrics and prediction
+    print(f'***************************************************************************')
     test_loss = np.average(test_losses)
     test_uni_loss = test_uni_losses/len(test_dataset)
     prev_uni_loss = prev_uni_losses/len(test_dataset)
@@ -512,26 +540,35 @@ def train(config):
     wandb.log({"previous uniform_loss": prev_uni_loss})
     gain = 1 - (test_uni_loss/prev_uni_loss)
     wandb.log({"gain": gain})
+    print(f'***************************************************************************')
         
-    # if config.method == "lstm":   
-    #     return
-    # elif config.method == "cluster":   
-    #     r_pred, r_gain = get_pred_risk(preds, result, config.num_asset, config.adm, config.method, maps)
-    # else:
-    #     r_pred, r_gain = get_pred_risk(preds, result, config.num_asset, config.adm, config.method)
+        
+    # ******************
+    if config.method == "lstm":   
+        return
+    elif config.method == "cluster":   
+        r_pred, r_gain = get_pred_risk(preds, result, config.num_asset, config.adm, config.method, maps)
+    else:
+        r_pred, r_gain = get_pred_risk(preds, result, config.num_asset, config.adm, config.method)
 
-    # wandb.log({"risk": r_pred})
-    # wandb.log({"risk gain":1-r_gain})
+    wandb.log({"preds": preds})
+    wandb.log({"labels": labels})
+    wandb.log({"risk": r_pred})
+    wandb.log({"risk gain":1-r_gain})
 
+    # ******************
+    
+    
 def model_pipeline(data_dir, project_name = "hyper"):
     with wandb.init(project=project_name, config=default_config):
-        config = wandb.config 
+        config = wandb.config
         wandb.run.name = config.wandb_name
         wandb.run.save()
         config.vec_len = int(config.num_asset*(config.num_asset+1)/2)
         config.width_n_height = int(np.ceil(pow(config.vec_len,0.5)))
         save_dir = './save_model/' + config.dir_folder + '/'
         config.data_dir = args.data_dir
+        print(f'data_dir:{data_dir}')
         config.save_dir = save_dir
         
         train(config)
@@ -544,4 +581,3 @@ if __name__ == "__main__":
     data_dir = args.data_dir
     model_pipeline(data_dir, args.project_name)
 
-        
